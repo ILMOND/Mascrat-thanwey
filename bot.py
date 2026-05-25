@@ -9,8 +9,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from database import init_db
 from middlewares.subscribe import SubscribeMiddleware
-# ✅ تم تعديل الاستدعاء هنا ليتوافق مع المسار الصحيح للمجلد الجديد
-from handlers import start, camp, admin, ai_handler
+# الاستدعاء الأصلي القديم
+import start, camp, admin, ai_handler
 
 logging.basicConfig(
     level=logging.INFO,
@@ -20,9 +20,8 @@ logger = logging.getLogger(__name__)
 
 
 async def main():
-    logger.info("🚀 تهيئة البوت الأسطوري...")
+    logger.info("🚀 تهيئة البوت...")
     await init_db()
-    logger.info("✅ قاعدة البيانات SQLite جاهزة")
 
     bot = Bot(
         token=BOT_TOKEN,
@@ -38,7 +37,7 @@ async def main():
     dp.include_router(admin.router)
     dp.include_router(ai_handler.router)
 
-    logger.info("🤖 البوت شغال ومستني الرسائل...")
+    logger.info("🤖 البوت يعمل بنجاح...")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
