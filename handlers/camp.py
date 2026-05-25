@@ -162,7 +162,7 @@ async def countdown_task(
         except Exception as e:
             logger.warning(f"countdown edit error: {e}")
 
-        await asyncio.sleep(30) # ⏳ التايمر المستقر (كل 30 ثانية) لحماية البوت من الحظر
+        await asyncio.sleep(1)
 
 
 @router.message(Command("camp"))
@@ -276,21 +276,6 @@ async def join_camp(call: CallbackQuery):
     await call.answer(f"✅ انضممت للمعسكر! أنت رقم {count} 🌟", show_alert=True)
 
 
-# 📖 دالة عرض قائمة الأوامر الكاملة داخل البوت
-@router.message(Command("camp_help"))
-async def camp_help_command(message: Message):
-    help_text = (
-        "📖 *دليل أوامر معسكر المذاكرة الكامل:*\n\n"
-        "👑 *أوامر المطور والأدمن فقط:*\n"
-        "➕ `/camp 2h` ⇦ لبدء معسكر جديد (حدد المدة h للساعات أو m للدقائق).\n"
-        "🛑 `/stop` ⇦ لإيقاف المعسكر الحالي يدوياً وفتح الشات فوراً للجميع.\n\n"
-        "👥 *أوامر الطلاب والأعضاء:*\n"
-        "🌟 الضغط على زر *انضمام* أسفل رسالة المعسكر لتسجيل حضورك ونزول اسمك في لوحة الشرف.\n"
-        "❓ `/camp_help` ⇦ لعرض رسالة الدليل هذه وشرح الأوامر."
-    )
-    await message.answer(help_text, parse_mode="Markdown")
-
-
 @router.message(F.chat.type.in_({"group", "supergroup"}))
 async def guard_messages(message: Message, bot: Bot):
     if not message.from_user:
@@ -304,4 +289,3 @@ async def guard_messages(message: Message, bot: Bot):
         await bot.delete_message(message.chat.id, message.message_id)
     except Exception as e:
         logger.warning(f"delete error: {e}")
-
