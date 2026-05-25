@@ -22,7 +22,6 @@ from database import (
     clear_camp,
     get_setting,
     get_many_settings,
-    # افترضنا وجود دالة لإزالة مشارك إذا أراد الاستسلام
 )
 
 from config import OWNER_ID
@@ -30,7 +29,6 @@ from config import OWNER_ID
 router = Router()
 logger = logging.getLogger(__name__)
 
-# تخزين بيانات المعسكرات النشطة والتنبيهات المرسلة
 active_camps: dict[int, dict] = {}
 
 def parse_duration(s: str) -> int | None:
@@ -112,7 +110,6 @@ async def send_final_stats(bot: Bot, chat_id: int, camp_id: str):
     await bot.send_message(chat_id, text, parse_mode="Markdown")
 
 async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, start: datetime, end: datetime):
-    # حالات إرسال التنبيهات
     warn_5 = False
     warn_1 = False
 
@@ -120,12 +117,10 @@ async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, star
         if chat_id not in active_camps or active_camps[chat_id]["camp_id"] != camp_id: return
         rem = (end - datetime.now()).total_seconds()
 
-        # تنبيه 5 دقائق
         if 290 <= rem <= 305 and not warn_5:
             await bot.send_message(chat_id, "🔔 *باقي 5 دقائق فقط!* شدوا حيلكم يا أبطال 🚀")
             warn_5 = True
 
-        # تنبيه 1 دقيقة
         if 55 <= rem <= 65 and not warn_1:
             await bot.send_message(chat_id, "⚠️ *دقيقة واحدة أخيرة!* اللحظات الحاسمة 🔥")
             warn_1 = True
@@ -146,7 +141,7 @@ async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, star
             c = await get_camp_count(camp_id)
             await bot.edit_message_text(txt, chat_id, msg_id, parse_mode="Markdown", reply_markup=camp_join_kb(camp_id, c))
         except: pass
-        await asyncio.sleep(45) # تحديث آمن كل 45 ثانية في الخلفية
+        await asyncio.sleep(45)
 
 @router.message(Command("camp"))
 async def start_camp(message: Message, bot: Bot):
@@ -180,32 +175,7 @@ async def join_camp(call: CallbackQuery, bot: Bot):
     c = await get_camp_count(cid)
     await call.answer(f"✅ تم الانضمام! أنت البطل رقم {c} 🔥", show_alert=True)
     
-    # تحديث فوري
     try:
         t = await build_msg(cid, sid["start_time"], sid["end_time"])
-        await bot.edit_message_text(t, call.message.chat.id, sid["msg_id"], parse_mode="Markdown", reply_markup=camp_join_kb(cid, c))
-    except: pass
-
-@router.callback_query(F.data.startswith("time:"))
-async def time_alert(call: CallbackQuery):
-    sid = active_camps.get(call.message.chat.id)
-    if not sid: return await call.answer("لا يوجد معسكر نشط")
-    rem = int((sid["end_time"] - datetime.now()).total_seconds())
-    await call.answer(f"⏱ المتبقي: {fmt_hms(rem)}\n📊 التقدم: {make_progress_bar(sid['start_time'], sid['end_time']).split()[-1]}", show_alert=True)
-
-@router.callback_query(F.data.startswith("stats:"))
-async def stats_alert(call: CallbackQuery):
-    c = await get_camp_count(call.data.split(":")[1])
-    await call.answer(f"📊 إحصائيات المعسكر:\n✅ منضمون: {c}\n❌ مستسلمون: 0\n📈 النجاح: 100%", show_alert=True)
-
-@router.callback_query(F.data.startswith("stop_camp:"))
-async def stop_cb(call: CallbackQuery, bot: Bot):
-    if call.from_user.id != OWNER_ID: return await call.answer("للأدمن فقط!", show_alert=True)
-    sid = active_camps.pop(call.message.chat.id, None)
-    if sid: sid["task"].cancel()
-    await bot.set_chat_permissions(call.message.chat.id, ChatPermissions(can_send_messages=True))
-    await call.message.delete()
-    await bot.send_message(call.message.chat.id, "🔓 تم إنهاء المعسكر وفتح الشات.")
-
-استبدل الكود بالكامل، وسيعمل النظام الجديد بكل سلاسة واحترافية! طمني بعد التجربة. 🚀⛺
+        await bot.edit_message_text(t, call.message.chat.id, sid["msg_id"], parse_
 
