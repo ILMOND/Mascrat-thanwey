@@ -73,11 +73,11 @@ def camp_join_kb(camp_id: str, count: int) -> InlineKeyboardMarkup:
                 )
             ],
             [
-                InlineKeyboardButton(text=f"⏳ الوقت المتبقي", callback_data=f"time:{camp_id}"),
-                InlineKeyboardButton(text=f"📊 إحصائيات", callback_data=f"stats:{camp_id}")
+                InlineKeyboardButton(text="⏳ الوقت المتبقي", callback_data=f"time:{camp_id}"),
+                InlineKeyboardButton(text="📊 إحصائيات", callback_data=f"stats:{camp_id}")
             ],
             [
-                InlineKeyboardButton(text=f"🛑 إلغاء الكامب", callback_data=f"stop_camp:{camp_id}")
+                InlineKeyboardButton(text="🛑 إلغاء الكامب", callback_data=f"stop_camp:{camp_id}")
             ]
         ]
     )
@@ -133,7 +133,7 @@ def make_mention(p: dict) -> str:
 async def send_final_message(bot: Bot, chat_id: int, camp_id: str):
     participants = await get_camp_participants(camp_id)
     if not participants:
-        text = "🏁 انتهى المعسكر."
+        text = "🏁 انتهى المعسكر ولم ينضم أحد."
     else:
         mentions = " ".join(make_mention(p) for p in participants)
         text = (
@@ -144,13 +144,36 @@ async def send_final_message(bot: Bot, chat_id: int, camp_id: str):
     await bot.send_message(chat_id, text, parse_mode="Markdown")
 
 
+# 🔄 دالة التحديث الآمنة في الخلفية (كل 60 ثانية لمنع حظر البوت)
 async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, start: datetime, end: datetime):
     while True:
         if chat_id not in active_camps or active_camps[chat_id]["camp_id"] != camp_id:
             return
 
         remaining = (end - datetime.now()).total_seconds()
+        
+        # 🚨 إذا انتهى الوقت تلقائياً
         if remaining <= 0:
+            try:
+                count = await get_camp_count(camp_id)
+                final_text = (
+                    f"🤲 المعسكر انتهى واكتملت المهمة بنجاح!\n"
+                    f"━━━━━━━━━━━━━━━━━━\n\n"
+                    f"👑 *Orino Camp* 💎\n\n"
+                    f"📅 {start.strftime('%Y/%m/%d')}\n"
+                    f"⌛ *المدة الكلية:* {fmt_hms(int((end - start).total_seconds()))}\n\n"
+                    f"⏳ *المتبقي:* `00:00:00`\n"
+                    f"📊 *التقدم:* `██████████ 100%`\n\n"
+                    f"👥 *إجمالي الأبطال المشاركين:* {count}\n\n"
+                    f"🔓 تم فتح الشات تلقائياً للجميع!"
+                )
+                await bot.edit_message_text(
+                    text=final_text, chat_id=chat_id, message_id=msg_id,
+                    parse_mode="Markdown", reply_markup=None
+                )
+            except Exception:
+                pass
+
             active_camps.pop(chat_id, None)
             await unlock_chat(bot, chat_id)
             await send_final_message(bot, chat_id, camp_id)
@@ -161,11 +184,8 @@ async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, star
             text = await build_msg(camp_id, start, end)
             count = await get_camp_count(camp_id)
             await bot.edit_message_text(
-                text=text,
-                chat_id=chat_id,
-                message_id=msg_id,
-                parse_mode="Markdown",
-                reply_markup=camp_join_kb(camp_id, count)
+                text=text, chat_id=chat_id, message_id=msg_id,
+                parse_mode="Markdown", reply_markup=camp_join_kb(camp_id, count)
             )
         except TelegramRetryAfter as e:
             await asyncio.sleep(e.retry_after)
@@ -173,9 +193,9 @@ async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, star
         except TelegramBadRequest:
             pass
         except Exception as e:
-            logger.warning(f"countdown edit error: {e}")
+            logger.warning(f"countdown background edit error: {e}")
 
-        await asyncio.sleep(30)
+        await asyncio.sleep(60)
 
 
 @router.message(Command("camp"))
@@ -210,7 +230,7 @@ async def start_camp(message: Message, bot: Bot):
 
     task = asyncio.create_task(countdown_task(bot, chat_id, camp_id, sent.message_id, start_time, end_time))
 
-    # 🛠️ تم إصلاح التخزين هنا لحفظ كل أوقات الـ الـ التايمر بنجاح
+    # حفظ البيانات كاملة لاستخدامها في التحديثات اللحظية عند ضغط الأزرار
     active_camps[chat_id] = {
         "camp_id": camp_id,
         "task": task,
@@ -237,6 +257,7 @@ async def stop_camp(message: Message, bot: Bot):
     await message.answer("🔓 تم إنهاء المعسكر")
 
 
+# 📥 استقبال ضغطة زرار الانضمام وتحديث الرسالة فوراً
 @router.callback_query(F.data.startswith("join:"))
 async def join_camp(call: CallbackQuery, bot: Bot):
     camp_id = call.data.split(":")[1]
@@ -256,7 +277,7 @@ async def join_camp(call: CallbackQuery, bot: Bot):
     count = await get_camp_count(camp_id)
     await call.answer(f"🔥 دخلت المعسكر\nأنت رقم {count}", show_alert=True)
     
-    # تحديث فوري للعداد والأزرار عند انضمام بطل جديد
+    # ⚡ تحديث إجباري فوري للرسالة والعداد لتظهر الحركة فوراً
     try:
         text = await build_msg(camp_id, session["start_time"], session["end_time"])
         await bot.edit_message_text(
@@ -267,16 +288,32 @@ async def join_camp(call: CallbackQuery, bot: Bot):
         pass
 
 
-# 🔔 استقبال ضغطة زرار الوقت المتبقي
+# ⏳ استقبال ضغطة زرار الوقت المتبقي (يحدث الرسالة الكبيرة + يعطي الـ Alert)
 @router.callback_query(F.data.startswith("time:"))
-async def camp_time_alert(call: CallbackQuery):
+async def camp_time_alert(call: CallbackQuery, bot: Bot):
     camp_id = call.data.split(":")[1]
-    session = active_camps.get(call.message.chat.id)
+    chat_id = call.message.chat.id
+    session = active_camps.get(chat_id)
+    
     if not session or session["camp_id"] != camp_id:
         await call.answer("⚠️ المعسكر غير نشط حالياً.", show_alert=True)
         return
+        
     remaining = (session["end_time"] - datetime.now()).total_seconds()
     progress = make_progress_bar(session["start_time"], session["end_time"])
+    count = await get_camp_count(camp_id)
+    
+    # ⚡ تحديث فوري للرسالة الأساسية بالجروب عند الضغط
+    try:
+        text = await build_msg(camp_id, session["start_time"], session["end_time"])
+        await bot.edit_message_text(
+            text=text, chat_id=chat_id, message_id=session["msg_id"],
+            parse_mode="Markdown", reply_markup=camp_join_kb(camp_id, count)
+        )
+    except Exception:
+        pass
+
+    # إظهار التنبيه الفوقي المتطابق
     alert_text = (
         f"⛺ Orino Camp | Pro ⏱\n"
         f"━━━━━━━━━━━━━━━\n"
