@@ -35,11 +35,23 @@ def fmt_hms(sec: int) -> str:
     return f"{h:02d}:{m:02d}:{s:02d}"
 
 
+def make_progress_bar(start: datetime, end: datetime) -> str:
+    total = (end - start).total_seconds()
+    if total <= 0:
+        return "██████████ 100%"
+    passed = (datetime.now() - start).total_seconds()
+    pct = min(1.0, max(0.0, passed / total))
+    blocks = int(pct * 10)
+    bar = "█" * blocks + "░" * (10 - blocks)
+    return f"{bar} {int(pct * 100)}%"
+
+
 async def build_msg(camp_id: str, start: datetime, end: datetime) -> str:
     s = await get_many_settings("camp_dua", "camp_lock_msg")
     dua = s["camp_dua"] or "🤲 «رَبِّ زِدْنِي عِلْمًا وَارْزُقْنِي فَهْمًا»"
     template = s["camp_lock_msg"] or (
         "⛺ *المعسكر نشط الآن!* 🔴\n\n"
+        "📊 *شريط التقدم:* `{progress}`\n"
         "⏱ *الوقت المتبقي:* `{countdown}`\n"
         "🕐 *بدأ في:* {start}\n"
         "🕗 *ينتهي في:* {end}\n"
@@ -51,6 +63,7 @@ async def build_msg(camp_id: str, start: datetime, end: datetime) -> str:
     remaining = max(0, int((end - datetime.now()).total_seconds()))
     count = await get_camp_count(camp_id)
     body = template.format(
+        progress=make_progress_bar(start, end),
         countdown=fmt_hms(remaining),
         start=start.strftime("%I:%M:%S %p"),
         end=end.strftime("%I:%M:%S %p"),
@@ -128,7 +141,7 @@ async def countdown_task(
                 dua = await get_setting("camp_dua") or "🤲 «رَبِّ زِدْنِي عِلْمًا وَارْزُقْنِي فَهْمًا»"
                 await bot.edit_message_text(
                     f"{dua}\n━━━━━━━━━━━━━━━━━━━━\n"
-                    f"⏱ *الوقت المتبقي:* `00:00:00` ✅\n"
+                    f"📊 *التقدم:* `██████████ 100%` ✅\n"
                     f"👥 *إجمالي المشاركين:* {count} طالب\n\n"
                     "🏁 *انتهى المعسكر!*",
                     chat_id=chat_id,
@@ -162,7 +175,7 @@ async def countdown_task(
         except Exception as e:
             logger.warning(f"countdown edit error: {e}")
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(300)  # ⏳ التحديث الآمن كل 5 دقائق لمنع توقف البوت
 
 
 @router.message(Command("camp"))
@@ -259,7 +272,7 @@ async def stop_camp(message: Message, bot: Bot):
 
 
 @router.callback_query(F.data.startswith("join:"))
-async def join_camp(call: CallbackQuery):
+async def join_camp(call: CallbackQuery, bot: Bot):
     camp_id = call.data.split(":", 1)[1]
     chat_id = call.message.chat.id
     session = active_camps.get(chat_id)
@@ -274,6 +287,32 @@ async def join_camp(call: CallbackQuery):
     )
     count = await get_camp_count(camp_id)
     await call.answer(f"✅ انضممت للمعسكر! أنت رقم {count} 🌟", show_alert=True)
+
+    # ⚡ تحديث فوري للشريط والعداد عند انضمام طالب جديد تفاعلياً
+    try:
+        text = await build_msg(camp_id, session["start_time"], session["end_time"])
+        kb = camp_join_kb(camp_id, count)
+        await bot.edit_message_text(
+            text, chat_id=chat_id, message_id=session["msg_id"],
+            parse_mode="Markdown", reply_markup=kb
+        )
+    except Exception:
+        pass
+
+
+# ⚙️ أمر التحكم وعرض الدليل للجروب
+@router.message(Command("camp_help"))
+async def camp_help_command(message: Message):
+    help_text = (
+        "⚙️ *لوحة التحكم والأوامر الخاصة بالمعسكر:*\n\n"
+        "👑 *أوامر المشرفين (الأدمن):*\n"
+        "➕ `/camp 2h` ⇦ لبدء معسكر جديد وقفل الشات (حدد h للساعات أو m للدقائق).\n"
+        "🛑 `/stop` ⇦ لإيقاف المعسكر الجاري فوراً وفتح الشات للطلاب.\n\n"
+        "👥 *أوامر الطلاب:* \n"
+        "🌟 اضغط على زر *انضمام* الموجود أسفل المعسكر لتسجيل حضورك.\n"
+        "❓ `/camp_help` ⇦ لعرض هذه الرسالة الإرشادية في أي وقت."
+    )
+    await message.answer(help_text, parse_mode="Markdown")
 
 
 @router.message(F.chat.type.in_({"group", "supergroup"}))
