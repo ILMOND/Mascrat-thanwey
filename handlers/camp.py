@@ -177,5 +177,28 @@ async def join_camp(call: CallbackQuery, bot: Bot):
     
     try:
         t = await build_msg(cid, sid["start_time"], sid["end_time"])
-        await bot.edit_message_text(t, call.message.chat.id, sid["msg_id"], parse_
+        await bot.edit_message_text(text=t, chat_id=call.message.chat.id, message_id=sid["msg_id"], parse_mode="Markdown", reply_markup=camp_join_kb(cid, c))
+    except Exception as e:
+        logger.error(f"Error updating message: {e}")
+
+@router.callback_query(F.data.startswith("time:"))
+async def time_alert(call: CallbackQuery):
+    sid = active_camps.get(call.message.chat.id)
+    if not sid: return await call.answer("لا يوجد معسكر نشط")
+    rem = int((sid["end_time"] - datetime.now()).total_seconds())
+    await call.answer(f"⏱ المتبقي: {fmt_hms(rem)}\n📊 التقدم: {make_progress_bar(sid['start_time'], sid['end_time']).split()[-1]}", show_alert=True)
+
+@router.callback_query(F.data.startswith("stats:"))
+async def stats_alert(call: CallbackQuery):
+    c = await get_camp_count(call.data.split(":")[1])
+    await call.answer(f"📊 إحصائيات المعسكر:\n✅ منضمون: {c}\n❌ مستسلمون: 0\n📈 النجاح: 100%", show_alert=True)
+
+@router.callback_query(F.data.startswith("stop_camp:"))
+async def stop_cb(call: CallbackQuery, bot: Bot):
+    if call.from_user.id != OWNER_ID: return await call.answer("للأدمن فقط!", show_alert=True)
+    sid = active_camps.pop(call.message.chat.id, None)
+    if sid: sid["task"].cancel()
+    await bot.set_chat_permissions(call.message.chat.id, ChatPermissions(can_send_messages=True))
+    await call.message.delete()
+    await bot.send_message(call.message.chat.id, "🔓 تم إنهاء المعسكر وفتح الشات.")
 
