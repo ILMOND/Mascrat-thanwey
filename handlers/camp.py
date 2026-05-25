@@ -17,7 +17,6 @@ from config import OWNER_ID
 router = Router()
 logger = logging.getLogger(__name__)
 
-# active_camps ستحتفظ ببيانات المعسكر والأعضاء المستثنيين
 active_camps: dict[int, dict] = {}
 
 
@@ -114,7 +113,6 @@ async def send_final_message(bot: Bot, chat_id: int, camp_id: str):
     await bot.send_message(chat_id, text, parse_mode="Markdown")
 
 
-# 🛠️ تم تعديل دالة التايمر لتعمل كل 30 ثانية لتجنب الحظر التلقائي
 async def countdown_task(
     bot: Bot, chat_id: int, camp_id: str,
     msg_id: int, start: datetime, end: datetime
@@ -164,14 +162,16 @@ async def countdown_task(
         except Exception as e:
             logger.warning(f"countdown edit error: {e}")
 
-        await asyncio.sleep(30) # 💡 نوم 30 ثانية يحافظ على استقرار التايمر والسيرفر
+        await asyncio.sleep(30) # ⏳ التايمر المستقر (كل 30 ثانية) لحماية البوت من الحظر
 
 
 @router.message(Command("camp"))
 async def start_camp(message: Message, bot: Bot):
     if message.from_user.id != OWNER_ID:
-        try: await message.delete()
-        except Exception: pass
+        try:
+            await message.delete()
+        except Exception:
+            pass
         return
 
     if message.chat.type not in ("group", "supergroup"):
@@ -180,8 +180,10 @@ async def start_camp(message: Message, bot: Bot):
 
     camp_chat = await get_setting("camp_chat_id")
     if camp_chat and str(message.chat.id) != camp_chat:
-        try: await message.delete()
-        except Exception: pass
+        try:
+            await message.delete()
+        except Exception:
+            pass
         return
 
     parts = message.text.split(maxsplit=1)
@@ -203,7 +205,8 @@ async def start_camp(message: Message, bot: Bot):
     if chat_id in active_camps:
         old = active_camps.pop(chat_id)
         t = old.get("task")
-        if t: t.cancel()
+        if t:
+            t.cancel()
 
     camp_id = uuid.uuid4().hex[:10]
     start_time = datetime.now()
@@ -219,15 +222,12 @@ async def start_camp(message: Message, bot: Bot):
     task = asyncio.create_task(
         countdown_task(bot, chat_id, camp_id, sent.message_id, start_time, end_time)
     )
-    
-    # 💡 تم إدراج قائمة allowed_users فارغة لتخزين مستخدمي الاستثناء
     active_camps[chat_id] = {
         "camp_id": camp_id,
         "start_time": start_time,
         "end_time": end_time,
         "task": task,
         "msg_id": sent.message_id,
-        "allowed_users": []
     }
     logger.info(f"[{chat_id}] 🔒 معسكر بدأ — {camp_id}")
 
@@ -235,15 +235,18 @@ async def start_camp(message: Message, bot: Bot):
 @router.message(Command("stop"))
 async def stop_camp(message: Message, bot: Bot):
     if message.from_user.id != OWNER_ID:
-        try: await message.delete()
-        except Exception: pass
+        try:
+            await message.delete()
+        except Exception:
+            pass
         return
 
     chat_id = message.chat.id
     session = active_camps.pop(chat_id, None)
     if session:
         t = session.get("task")
-        if t: t.cancel()
+        if t:
+            t.cancel()
         await clear_camp(session["camp_id"])
 
     await unlock_chat(bot, chat_id)
@@ -273,47 +276,16 @@ async def join_camp(call: CallbackQuery):
     await call.answer(f"✅ انضممت للمعسكر! أنت رقم {count} 🌟", show_alert=True)
 
 
-# 🔑 ميزة الاستثناء: أمر فتح الشات لأدمن معين بالآيدي أو اليوزر نيم
-@router.message(Command("a"))
-async def allow_user_command(message: Message):
-    if message.from_user.id != OWNER_ID: return
-    
-    session = active_camps.get(message.chat.id)
-    if not session:
-        await message.reply("⚠️ مفيش معسكر شغال حالياً في الجروب ده عشان تضيف مستثنيين!")
-        return
-
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
-        await message.reply("⚠️ *الصيغة:* اكتب `/a` متبوعاً بالآيدي أو بيوزر الشخص.\nمثال: `/a 123456789` أو `/a @username`", parse_mode="Markdown")
-        return
-
-    target = parts[1].strip()
-    
-    # التحقق إذا كان المدخل آيدي رقمي أو يوزر نيم
-    if target.isdigit():
-        user_identifier = int(target)
-    else:
-        user_identifier = target.replace("@", "")
-
-    if user_identifier not in session["allowed_users"]:
-        session["allowed_users"].append(user_identifier)
-        await message.reply(f"✅ تم السماح لـ `{target}` بالحديث داخل هذا المعسكر بنجاح! 🔓", parse_mode="Markdown")
-    else:
-        await message.reply("⚠️ الشخص ده مسموح له يتكلم بالفعل!")
-
-
-# 📖 ميزة دليل شرح الأوامر الكامل
+# 📖 دالة عرض قائمة الأوامر الكاملة داخل البوت
 @router.message(Command("camp_help"))
 async def camp_help_command(message: Message):
     help_text = (
         "📖 *دليل أوامر معسكر المذاكرة الكامل:*\n\n"
-        "👑 *أوامر الأدمن والمالك فقط:*\n"
+        "👑 *أوامر المطور والأدمن فقط:*\n"
         "➕ `/camp 2h` ⇦ لبدء معسكر جديد (حدد المدة h للساعات أو m للدقائق).\n"
-        "🛑 `/stop` ⇦ لإيقاف المعسكر الحالي وفتح الشات فوراً للجميع.\n"
-        "🔑 `/a [ID/Username]` ⇦ للسماح لشخص أو مشرف بالحديث أثناء قفل الشات.\n\n"
+        "🛑 `/stop` ⇦ لإيقاف المعسكر الحالي يدوياً وفتح الشات فوراً للجميع.\n\n"
         "👥 *أوامر الطلاب والأعضاء:*\n"
-        "🌟 الضغط على زر *انضمام* أسفل رسالة المعسكر لتسجيل حضورك.\n"
+        "🌟 الضغط على زر *انضمام* أسفل رسالة المعسكر لتسجيل حضورك ونزول اسمك في لوحة الشرف.\n"
         "❓ `/camp_help` ⇦ لعرض رسالة الدليل هذه وشرح الأوامر."
     )
     await message.answer(help_text, parse_mode="Markdown")
@@ -326,16 +298,10 @@ async def guard_messages(message: Message, bot: Bot):
     session = active_camps.get(message.chat.id)
     if not session:
         return
-        
-    # السماح للمطور بالحديث دائماً
     if message.from_user.id == OWNER_ID:
         return
-        
-    # 🔑 التحقق إذا كان آيدي الطالب أو اليوزر نيم بتاعه موجود في قائمة المسموح لهم
-    if message.from_user.id in session["allowed_users"] or (message.from_user.username and message.from_user.username in session["allowed_users"]):
-        return
-
     try:
         await bot.delete_message(message.chat.id, message.message_id)
     except Exception as e:
-        logger.warning(f"delete error: {e}"
+        logger.warning(f"delete error: {e}")
+
