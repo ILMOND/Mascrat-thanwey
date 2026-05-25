@@ -9,6 +9,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from config import BOT_TOKEN
 from database import init_db
 from middlewares.subscribe import SubscribeMiddleware
+# ✅ تم تعديل الاستدعاء هنا ليتوافق مع المسار الصحيح للمجلد الجديد
 from handlers import start, camp, admin, ai_handler
 
 logging.basicConfig(
