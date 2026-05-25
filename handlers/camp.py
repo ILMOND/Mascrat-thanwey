@@ -22,6 +22,7 @@ from database import (
     clear_camp,
     get_setting,
     get_many_settings,
+    # تأكد من وجود دالة حذف المشارك في ملف database إذا كنت تستخدمها
 )
 
 from config import OWNER_ID
@@ -68,9 +69,6 @@ def camp_join_kb(camp_id: str, count: int) -> InlineKeyboardMarkup:
     )
 
 async def build_msg(camp_id: str, start: datetime, end: datetime, status="active"):
-    s = await get_many_settings("camp_dua")
-    dua = s.get("camp_dua") or "🤲 «رَبِّ زِدْنِي عِلْمًا وَارْزُقْنِي فَهْمًا»"
-    
     total_sec = int((end - start).total_seconds())
     rem = max(0, int((end - datetime.now()).total_seconds()))
     count = await get_camp_count(camp_id)
@@ -79,17 +77,18 @@ async def build_msg(camp_id: str, start: datetime, end: datetime, status="active
     header = "🏆 *معسكر الإنجاز والتركيز* 🔥" if status == "active" else "🏁 *انتهى المعسكر بنجاح!*"
     
     text = (
-        f"{dua}\n"
-        f"━━━━━━━━━━━━━━━━━━\n\n"
         f"{header}\n\n"
         f"📅 {start.strftime('%Y/%m/%d')}\n"
-        f"⌛ *المدة الكلية:* {fmt_hms(total_sec)}\n\n"
-        f"🕐 *البداية:* {start.strftime('%I:%M %p')}\n"
+        f"⌛ *المدة الكلية:* {fmt_hms(total_sec)}\n"
+        f"⚙️ *نوع الكامب:* يدوي • جروب\n\n"
+        f"🕐 *البداية (توقيت مصر):* {start.strftime('%I:%M %p')}\n"
         f"🏁 *النهاية:* {end.strftime('%I:%M %p')}\n\n"
         f"⏳ *المتبقي:* `{fmt_hms(rem)}`\n"
         f"📊 *التقدم:* `{prog}`\n\n"
-        f"👥 *عدد الأبطال:* {count}\n\n"
-        f"📵 *الشات مغلق* — ركز في حلمك يا بطل 🚀"
+        f"👥 *المشاركون:*\n"
+        f"✅ منضمون: {count}\n"
+        f"❌ مستسلمون: 0\n\n"
+        f"📵 *الشات مقلق حالياً* — ركز في حلمك يا بطل 🚀"
     )
     return text
 
@@ -99,13 +98,14 @@ async def send_final_stats(bot: Bot, chat_id: int, camp_id: str):
     mentions = " ".join([f"[{x['full_name']}](tg://user?id={x['user_id']})" for x in p]) if p else "لا يوجد"
     
     text = (
-        f"🏁 *انتهى الكامب! أحسنتم يا شباب* 🔥\n\n"
+        f"🏁 *انتهى الكامب! أحسنتم يا شباب* ✨\n\n"
         f"📊 *إحصائيات الكامب:*\n"
         f"✅ المنضمون: {count}\n"
         f"❌ المستسلمون: 0\n"
         f"📈 نسبة النجاح: 100%\n\n"
         f"👑 *قائمة الأبطال:*\n{mentions}\n\n"
-        f"دعاء ما بعد المذاكرة: اللهم إني استودعك ما قرأت وما حفظت.."
+        f"🤲 *دعاء ما بعد المذاكرة:*\n"
+        f"«اللهم إني أستودعك ما قرأت وما حفظت وما تعلمت، فرده إلي عند حاجتي إليه، إنك على كل شيء قدير»"
     )
     await bot.send_message(chat_id, text, parse_mode="Markdown")
 
@@ -118,11 +118,11 @@ async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, star
         rem = (end - datetime.now()).total_seconds()
 
         if 290 <= rem <= 305 and not warn_5:
-            await bot.send_message(chat_id, "🔔 *باقي 5 دقائق فقط!* شدوا حيلكم يا أبطال 🚀")
+            await bot.send_message(chat_id, "🔔 *تنبيه!*\n\nفضل 5 دقائق بس!\nكفل جامد، أنت قرّبت! 🔥", parse_mode="Markdown")
             warn_5 = True
 
         if 55 <= rem <= 65 and not warn_1:
-            await bot.send_message(chat_id, "⚠️ *دقيقة واحدة أخيرة!* اللحظات الحاسمة 🔥")
+            await bot.send_message(chat_id, "🔔 *آخر دقيقة!*\n\nفضل دقيقة واحدة بس!\nكفل للآخر! ⚡", parse_mode="Markdown")
             warn_1 = True
 
         if rem <= 0:
@@ -139,7 +139,7 @@ async def countdown_task(bot: Bot, chat_id: int, camp_id: str, msg_id: int, star
         try:
             txt = await build_msg(camp_id, start, end)
             c = await get_camp_count(camp_id)
-            await bot.edit_message_text(txt, chat_id, msg_id, parse_mode="Markdown", reply_markup=camp_join_kb(camp_id, c))
+            await bot.edit_message_text(text=txt, chat_id=chat_id, message_id=msg_id, parse_mode="Markdown", reply_markup=camp_join_kb(camp_id, c))
         except: pass
         await asyncio.sleep(45)
 
@@ -155,9 +155,27 @@ async def start_camp(message: Message, bot: Bot):
     if chat_id in active_camps:
         if active_camps[chat_id].get("task"): active_camps[chat_id]["task"].cancel()
 
+    # 1. إرسال رسالة إغلاق الشات فوراً 🚫
+    await bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=False))
+    await message.answer(
+        "⛔ *الجروب في وضع الكامب*\n\n"
+        "💎 يلا نذاكر!\n"
+        "🙌 ربنا يوفقكم يا جماعة", 
+        parse_mode="Markdown"
+    )
+
+    # 2. إرسال رسالة دعاء قبل المذاكرة فوراً 🤲
+    dua_text = (
+        "📖 *دعاء قبل المذاكرة*\n\n"
+        "«اللهم إني أسألك فهم النبيين وحفظ المرسلين والملائكة المقربين، "
+        "اللهم اجعل ألسنتنا عامرة بذكرك، وقلوبنا بخشيتك، وأسرارنا بطاعتك، إنك على كل شيء قدير»\n\n"
+        "✨ *بالتوفيق للجميع*"
+    )
+    await message.answer(dua_text, parse_mode="Markdown")
+
+    # 3. إنشاء المعسكر وبدء العداد التنازلي ⏳
     camp_id = uuid.uuid4().hex[:10]
     st, en = datetime.now(), datetime.now() + timedelta(seconds=d)
-    await bot.set_chat_permissions(chat_id, ChatPermissions(can_send_messages=False))
     
     txt = await build_msg(camp_id, st, en)
     sent = await message.answer(txt, parse_mode="Markdown", reply_markup=camp_join_kb(camp_id, 0))
@@ -173,7 +191,7 @@ async def join_camp(call: CallbackQuery, bot: Bot):
     
     await add_camp_participant(call.from_user.id, cid, call.from_user.username, call.from_user.full_name)
     c = await get_camp_count(cid)
-    await call.answer(f"✅ تم الانضمام! أنت البطل رقم {c} 🔥", show_alert=True)
+    await call.answer(f"✅ تم انضمامك بنجاح للمعسكر! بالتوفيق يا بطل 📖", show_alert=True)
     
     try:
         t = await build_msg(cid, sid["start_time"], sid["end_time"])
@@ -181,17 +199,34 @@ async def join_camp(call: CallbackQuery, bot: Bot):
     except Exception as e:
         logger.error(f"Error updating message: {e}")
 
+@router.callback_query(F.data.startswith("quit:"))
+async def quit_camp(call: CallbackQuery, bot: Bot):
+    cid = call.data.split(":")[1]
+    sid = active_camps.get(call.message.chat.id)
+    if not sid or sid["camp_id"] != cid: 
+        return await call.answer("المعسكر انتهى بالفعل", show_alert=True)
+    
+    # تنبيه المستخدم بالاستسلام وتحديث العداد
+    await call.answer("😢 تم تسجيل استسلامك.. معوضة في المعسكر القادم!", show_alert=True)
+    
+    try:
+        c = await get_camp_count(cid)
+        t = await build_msg(cid, sid["start_time"], sid["end_time"])
+        await bot.edit_message_text(text=t, chat_id=call.message.chat.id, message_id=sid["msg_id"], parse_mode="Markdown", reply_markup=camp_join_kb(cid, c))
+    except Exception as e:
+        logger.error(f"Error during quit: {e}")
+
 @router.callback_query(F.data.startswith("time:"))
 async def time_alert(call: CallbackQuery):
     sid = active_camps.get(call.message.chat.id)
     if not sid: return await call.answer("لا يوجد معسكر نشط")
     rem = int((sid["end_time"] - datetime.now()).total_seconds())
-    await call.answer(f"⏱ المتبقي: {fmt_hms(rem)}\n📊 التقدم: {make_progress_bar(sid['start_time'], sid['end_time']).split()[-1]}", show_alert=True)
+    await call.answer(f"⏱ الوقت المتبقي: {fmt_hms(rem)}\n📊 التقدم: {make_progress_bar(sid['start_time'], sid['end_time']).split()[-1]}", show_alert=True)
 
 @router.callback_query(F.data.startswith("stats:"))
 async def stats_alert(call: CallbackQuery):
     c = await get_camp_count(call.data.split(":")[1])
-    await call.answer(f"📊 إحصائيات المعسكر:\n✅ منضمون: {c}\n❌ مستسلمون: 0\n📈 النجاح: 100%", show_alert=True)
+    await call.answer(f"📊 إحصائيات الكامب:\n\n✅ منضمون: {c}\n❌ مستسلمون: 0\n📈 نسبة النجاح: 100.0%", show_alert=True)
 
 @router.callback_query(F.data.startswith("stop_camp:"))
 async def stop_cb(call: CallbackQuery, bot: Bot):
